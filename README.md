@@ -1,4 +1,5 @@
-# icog_rag
+# Icog_rag
+
 An AI-powered knowledge assistant for ICog that uses Retrieval-Augmented Generation (RAG) to answer questions from the attached ICog document library. Built with React, FastAPI, Gemini, Redis, and Qdrant.
 
 ![alt text](assets/image.png)
