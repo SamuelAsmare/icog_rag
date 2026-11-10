@@ -33,7 +33,7 @@ export default function ChatInput({ onSubmit, isLoading }: ChatInputProps) {
   }
 
   return (
-    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-2 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+    <div className="rounded-[1.75rem] border border-slate-200/80 bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-sm">
       <textarea
         ref={textareaRef}
         value={value}
@@ -46,7 +46,7 @@ export default function ChatInput({ onSubmit, isLoading }: ChatInputProps) {
         }}
         rows={1}
         placeholder="Ask your knowledge base..."
-        className="max-h-[180px] w-full resize-none border-0 bg-transparent px-3 py-2 text-[15px] text-slate-700 placeholder:text-slate-400 focus:outline-none"
+        className="max-h-[180px] w-full resize-none border-0 bg-transparent px-3 py-3 text-[15px] text-slate-700 placeholder:text-slate-400 focus:outline-none"
         aria-label="Message input"
         disabled={isLoading}
       />
@@ -60,7 +60,7 @@ export default function ChatInput({ onSubmit, isLoading }: ChatInputProps) {
           type="button"
           onClick={handleSubmit}
           disabled={!value.trim() || isLoading}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-200 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#2563eb,#3b82f6)] text-white shadow-[0_12px_30px_rgba(37,99,235,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
           aria-label="Send message"
         >
           {isLoading ? <LoaderCircle size={18} className="animate-spin" /> : <ArrowUp size={18} />}

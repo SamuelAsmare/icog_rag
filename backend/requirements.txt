@@ -5,6 +5,7 @@ certifi==2026.10.23
 click==8.5.1
 fastapi==0.162.2
 google-genai==1.40.0
+groq==0.31.0
 grpcio==1.85.1
 h11==0.16.0
 h2==4.4.1

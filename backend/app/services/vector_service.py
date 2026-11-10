@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import re
 from uuid import uuid4
 
 from qdrant_client.http import models
@@ -31,14 +32,10 @@ async def ensure_collection() -> None:
             distance=models.Distance.COSINE,
         ),
     )
-
-
 async def store_document_chunks(chunks: list[dict]) -> int:
     if not chunks:
         return 0
-
     await ensure_collection()
-
     points = [
         models.PointStruct(
             id=str(uuid4()),
@@ -53,26 +50,20 @@ async def store_document_chunks(chunks: list[dict]) -> int:
         )
         for chunk in chunks
     ]
-
     await qdrant_client.upsert(
         collection_name=settings.QDRANT_COLLECTION,
         wait=True,
         points=points,
     )
-
     return len(points)
-
-
 async def search_document_chunks(
     query_vector: list[float],
     limit: int | None = None,
     similarity_threshold: float | None = None,
+    query_text: str | None = None,
 ) -> list[dict]:
-
     await ensure_collection()
-
     top_k = limit or settings.TOP_K
-
     threshold = (
         similarity_threshold
         if similarity_threshold is not None
@@ -82,12 +73,12 @@ async def search_document_chunks(
     results = await qdrant_client.query_points(
         collection_name=settings.QDRANT_COLLECTION,
         query=query_vector,
-        limit=top_k,
+        limit=top_k * 3,
         score_threshold=threshold,
         with_payload=True,
     )
 
-    return [
+    hits = [
         {
             "document_id": result.payload.get("document_id"),
             "filename": result.payload.get("filename"),
@@ -99,3 +90,22 @@ async def search_document_chunks(
         for result in results.points
         if result.payload is not None
     ]
+
+    if query_text:
+        normalized_query = re.findall(r"\w+", query_text.lower())
+        keyword_tokens = {token for token in normalized_query if len(token) > 2}
+
+        if keyword_tokens:
+            for hit in hits:
+                text_tokens = {
+                    token
+                    for token in re.findall(r"\w+", (hit["text"] or "").lower())
+                    if len(token) > 2
+                }
+                overlap = len(keyword_tokens & text_tokens)
+                keyword_boost = overlap / len(keyword_tokens)
+                hit["score"] = hit["score"] + (keyword_boost * 0.25)
+
+            hits.sort(key=lambda item: item["score"], reverse=True)
+
+    return hits[:top_k]
