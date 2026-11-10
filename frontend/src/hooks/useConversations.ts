@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { Conversation } from '../types/chat'
 
-const STORAGE_KEY = 'knowly-ai-conversations-v1'
+const STORAGE_KEY = 'icog-rag-conversations-v1'
 
 function createConversation(title = 'New chat'): Conversation {
   const now = new Date().toISOString()

@@ -1,5 +1,6 @@
 import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useState } from 'react'
+import AdminUploadPage from './components/AdminUploadPage'
 import ChatWindow from './components/ChatWindow'
 import Sidebar from './components/Sidebar'
 import { useConversations } from './hooks/useConversations'
@@ -36,6 +37,7 @@ function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(false)
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [currentView, setCurrentView] = useState<'chat' | 'admin'>('chat')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -113,8 +115,8 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 antialiased">
-      <div className="mx-auto flex h-screen max-w-[1800px] overflow-hidden">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.12),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.10),_transparent_25%),linear-gradient(180deg,#f8fafc_0%,#eef5ff_100%)] text-slate-900 antialiased">
+      <div className="mx-auto flex h-screen max-w-[1800px] overflow-hidden p-2 lg:p-4">
         <aside className="lg:flex">
           <Sidebar
             conversations={conversations}
@@ -126,14 +128,21 @@ function App() {
             onCloseMobile={() => setSidebarOpen(false)}
             onSelectConversation={(id) => {
               selectConversation(id)
+              setCurrentView('chat')
               setSidebarOpen(false)
             }}
             onNewChat={() => {
               createNewConversation()
+              setCurrentView('chat')
               setSidebarOpen(false)
             }}
             onDeleteConversation={(id) => deleteConversation(id)}
             onToggleSettings={() => setShowSettings((current) => !current)}
+            onSelectAdminPage={() => {
+              setCurrentView('admin')
+              setSidebarOpen(false)
+            }}
+            currentView={currentView}
           />
         </aside>
 
@@ -146,13 +155,13 @@ function App() {
           />
         )}
 
-        <main className="relative flex min-w-0 flex-1 flex-col bg-white">
-          <header className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur-sm sm:px-6 lg:px-8">
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/85 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+          <header className="flex items-center justify-between border-b border-slate-200/90 bg-white/80 px-4 py-3 backdrop-blur-sm sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 lg:hidden"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 lg:hidden"
                 aria-label="Open sidebar"
               >
                 <Menu size={18} />
@@ -162,36 +171,40 @@ function App() {
                 <button
                   type="button"
                   onClick={() => setSidebarCollapsed((current) => !current)}
-                  className="hidden h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 lg:inline-flex"
+                  className="hidden h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 lg:inline-flex"
                   aria-label="Collapse sidebar"
                 >
                   {isSidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
                 </button>
 
                 <div>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-400">
-                    Assistant
+                  <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-slate-400">
+                    ICog AI
                   </p>
                   <h1 className="truncate text-base font-semibold text-slate-900 sm:text-lg">
-                    {activeConversation?.title ?? 'Knowly AI'}
+                    {activeConversation?.title ?? 'ICOG RAG'}
                   </h1>
                 </div>
               </div>
             </div>
 
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 shadow-sm shadow-emerald-100">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
               Ready
             </div>
           </header>
 
-          <ChatWindow
-            conversation={activeConversation}
-            isLoading={isLoading}
-            error={error}
-            onSendMessage={handleSendMessage}
-            onSuggestionClick={handleSuggestionClick}
-          />
+          {currentView === 'admin' ? (
+            <AdminUploadPage />
+          ) : (
+            <ChatWindow
+              conversation={activeConversation}
+              isLoading={isLoading}
+              error={error}
+              onSendMessage={handleSendMessage}
+              onSuggestionClick={handleSuggestionClick}
+            />
+          )}
         </main>
       </div>
     </div>

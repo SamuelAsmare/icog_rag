@@ -1,5 +1,5 @@
-from __future__ import annotations
-
+# Its responsibility is to take extracted PDF page texts and divide them into smaller pieces called chunks.
+# from __future__ import annotations
 from typing import Any, Iterable
 
 from app.core.config import settings
@@ -38,5 +38,4 @@ def chunk_pages(
                     "text": chunk_text,
                 }
             )
-
     return chunks

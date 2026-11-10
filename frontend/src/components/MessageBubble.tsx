@@ -15,12 +15,12 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && (
-        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm">
+        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#0f172a,#334155)] text-white shadow-sm">
           <Bot size={16} />
         </div>
       )}
 
-      <div className={`max-w-[85%] rounded-2xl border px-4 py-3 shadow-sm ${isUser ? 'border-blue-100 bg-blue-50 text-slate-800' : 'border-slate-200 bg-white text-slate-700'}`}>
+      <div className={`max-w-[85%] rounded-[1.5rem] border px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.05)] ${isUser ? 'border-blue-100 bg-[linear-gradient(180deg,#eff6ff,#dbeafe)] text-slate-800' : 'border-slate-200 bg-white text-slate-700'}`}>
         <div className="markdown-content text-[15px] leading-7">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}

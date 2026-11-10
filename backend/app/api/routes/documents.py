@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from uuid import uuid4
@@ -20,6 +21,12 @@ router = APIRouter(prefix="/api")
 
 class UserQuestionRequest(BaseModel):
     question: str = Field(..., min_length=3, max_length=2000)
+
+
+def _build_question_cache_key(question: str) -> str:
+    normalized_question = " ".join(question.strip().lower().split())
+    digest = hashlib.sha256(normalized_question.encode("utf-8")).hexdigest()
+    return f"rag:question:{digest}"
 
 
 @router.post("/documents")
@@ -100,18 +107,48 @@ async def submit_user_question(payload: UserQuestionRequest) -> dict:
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
+    cache_key = _build_question_cache_key(question)
+    try:
+        cached_request_id = await redis_client.get(cache_key)
+    except Exception:
+        cached_request_id = None
+
+    if cached_request_id:
+        try:
+            cached_payload_raw = await redis_client.get(f"rag:request:{cached_request_id}")
+        except Exception:
+            cached_payload_raw = None
+
+        if cached_payload_raw:
+            try:
+                cached_payload = json.loads(cached_payload_raw)
+            except json.JSONDecodeError:
+                cached_payload = None
+
+            if cached_payload and cached_payload.get("question") == question:
+                return {
+                    "request_id": cached_request_id,
+                    "message": "Relevant context retrieved successfully from cache",
+                    "sources": cached_payload.get("source_references", []),
+                    "cached": True,
+                }
+
     try:
         query_vector = generate_question_embedding(question)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Embedding generation failed: {exc}") from exc
 
     try:
-        results = await search_document_chunks(query_vector=query_vector, limit=settings.TOP_K)
+        results = await search_document_chunks(
+            query_vector=query_vector,
+            limit=settings.TOP_K,
+            query_text=question,
+        )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Qdrant retrieval error: {exc}") from exc
 
     if not results:
-        raise HTTPException(status_code=404, detail="No relevant university context was found for the question.")
+        raise HTTPException(status_code=404, detail="No relevant ICog context was found for the question.")
 
     request_id = str(uuid4())
     source_refs = [
@@ -130,6 +167,7 @@ async def submit_user_question(payload: UserQuestionRequest) -> dict:
     }
 
     try:
+        await redis_client.set(cache_key, request_id, ex=settings.RAG_REQUEST_TTL)
         await redis_client.set(redis_key, json.dumps(payload_to_store), ex=settings.RAG_REQUEST_TTL)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Redis storage failure: {exc}") from exc
@@ -138,6 +176,7 @@ async def submit_user_question(payload: UserQuestionRequest) -> dict:
         "request_id": request_id,
         "message": "Relevant context retrieved successfully",
         "sources": source_refs,
+        "cached": False,
     }
 
 
@@ -173,8 +212,9 @@ async def generate_answer(request_id: str = Query(..., description="Unique reque
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Gemini API error while generating the answer.") from exc
 
+    saved_request["answer"] = answer
     try:
-        await redis_client.delete(redis_key)
+        await redis_client.set(redis_key, json.dumps(saved_request), ex=settings.RAG_REQUEST_TTL)
     except Exception:
         pass
 
