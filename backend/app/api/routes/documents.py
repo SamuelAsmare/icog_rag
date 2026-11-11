@@ -124,7 +124,6 @@ async def submit_user_question(payload: UserQuestionRequest) -> dict:
                 cached_payload = json.loads(cached_payload_raw)
             except json.JSONDecodeError:
                 cached_payload = None
-
             if cached_payload and cached_payload.get("question") == question:
                 return {
                     "request_id": cached_request_id,
@@ -179,11 +178,11 @@ async def submit_user_question(payload: UserQuestionRequest) -> dict:
         "cached": False,
     }
 
-
 @router.get("/answer")
 async def generate_answer(request_id: str = Query(..., description="Unique request ID from the question endpoint.")) -> dict:
     redis_key = f"rag:request:{request_id}"
 
+    # STEP 1: Retrieve request data from Redis
     try:
         raw_value = await redis_client.get(redis_key)
     except Exception as exc:
@@ -199,12 +198,35 @@ async def generate_answer(request_id: str = Query(..., description="Unique reque
 
     question = saved_request.get("question")
     context = saved_request.get("retrieved_context")
+
     if not question or not context:
         raise HTTPException(status_code=404, detail="Request data is incomplete or expired.")
 
+    # STEP 2: CHECK IF GEMINI ANSWER ALREADY EXISTS IN REDIS
+    cached_answer = saved_request.get("answer")
+
+    if cached_answer:
+        print(f"[ANSWER CACHE HIT] Existing answer found for request: {request_id}")
+        print("[ANSWER CACHE HIT] Skipping Gemini API call.")
+
+        return {
+            "request_id": request_id,
+            "message": "Answer retrieved successfully from cache",
+            "answer": cached_answer,
+            "sources": saved_request.get("source_references", []),
+            "cached": True,
+        }
+
+    print(f"[ANSWER CACHE MISS] No generated answer found for request: {request_id}")
+    print("[GEMINI] Sending question and retrieved context to Gemini...")
+
+    # STEP 3: GENERATE ANSWER USING GEMINI
     try:
         gemini_service = GeminiService()
         answer = gemini_service.generate_answer(question, context)
+
+        print("[GEMINI] Answer generated successfully.")
+
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -212,15 +234,26 @@ async def generate_answer(request_id: str = Query(..., description="Unique reque
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Gemini API error while generating the answer.") from exc
 
+    # STEP 4: SAVE GENERATED ANSWER IN REDIS
     saved_request["answer"] = answer
-    try:
-        await redis_client.set(redis_key, json.dumps(saved_request), ex=settings.RAG_REQUEST_TTL)
-    except Exception:
-        pass
 
+    try:
+        await redis_client.set(
+            redis_key,
+            json.dumps(saved_request),
+            ex=settings.RAG_REQUEST_TTL
+        )
+
+        print("[REDIS] Generated answer successfully saved in Redis.")
+
+    except Exception as exc:
+        print(f"[REDIS WARNING] Failed to cache generated answer: {exc}")
+
+    # STEP 5: RETURN GENERATED ANSWER
     return {
         "request_id": request_id,
         "message": "Answer generated successfully",
         "answer": answer,
         "sources": saved_request.get("source_references", []),
+        "cached": False,
     }
