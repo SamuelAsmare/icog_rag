@@ -8,7 +8,7 @@ from qdrant_client.http import models
 
 from app.core.config import settings
 from app.database.qdrant import qdrant_client
-
+from app.services.reranking_service import rerank_chunks
 
 async def ensure_collection() -> None:
     try:
@@ -62,13 +62,21 @@ async def search_document_chunks(
     similarity_threshold: float | None = None,
     query_text: str | None = None,
 ) -> list[dict]:
-    await ensure_collection()
-    top_k = limit or settings.TOP_K
+
+    # 1. Determine how many final chunks we want.
+    top_k = limit if limit is not None else settings.TOP_K
+
     threshold = (
         similarity_threshold
         if similarity_threshold is not None
         else settings.SIMILARITY_THRESHOLD
     )
+
+    if top_k <= 0:
+        return []
+
+    # 2. COSINE SIMILARITY: Retrieve semantically similar candidates.
+    await ensure_collection()
 
     results = await qdrant_client.query_points(
         collection_name=settings.QDRANT_COLLECTION,
@@ -78,6 +86,7 @@ async def search_document_chunks(
         with_payload=True,
     )
 
+    # Convert Qdrant results into ordinary Python dictionaries.
     hits = [
         {
             "document_id": result.payload.get("document_id"),
@@ -85,27 +94,58 @@ async def search_document_chunks(
             "page_number": result.payload.get("page_number"),
             "chunk_index": result.payload.get("chunk_index"),
             "text": result.payload.get("text"),
-            "score": float(result.score),
+            "cosine_score": float(result.score),
         }
         for result in results.points
         if result.payload is not None
     ]
 
-    if query_text:
-        normalized_query = re.findall(r"\w+", query_text.lower())
-        keyword_tokens = {token for token in normalized_query if len(token) > 2}
+    # Without the original question, we cannot perform
+    # keyword matching or CrossEncoder reranking.
+    if not query_text or not hits:
+        return hits[:top_k]
+
+    # 3. KEYWORD BOOSTING: Reward chunks containing query keywords.
+    keyword_tokens = {
+        token
+        for token in re.findall(r"\w+", query_text.lower())
+        if len(token) > 2
+    }
+
+    for hit in hits:
+        text_tokens = {
+            token
+            for token in re.findall(r"\w+", (hit["text"] or "").lower())
+            if len(token) > 2
+        }
 
         if keyword_tokens:
-            for hit in hits:
-                text_tokens = {
-                    token
-                    for token in re.findall(r"\w+", (hit["text"] or "").lower())
-                    if len(token) > 2
-                }
-                overlap = len(keyword_tokens & text_tokens)
-                keyword_boost = overlap / len(keyword_tokens)
-                hit["score"] = hit["score"] + (keyword_boost * 0.25)
+            overlap = len(keyword_tokens & text_tokens)
+            keyword_score = overlap / len(keyword_tokens)
+        else:
+            keyword_score = 0.0
 
-            hits.sort(key=lambda item: item["score"], reverse=True)
+        # Combine cosine similarity and keyword matching.
+        hit["keyword_score"] = keyword_score
 
-    return hits[:top_k]
+        hit["combined_score"] = (
+            hit["cosine_score"] * 0.75
+            + keyword_score * 0.25
+        )
+
+    # Put stronger preliminary candidates first.
+    hits.sort(
+        key=lambda item: item["combined_score"],
+        reverse=True,
+    )
+    hits = hits[:top_k * 2]
+    # 4. CROSSENCODER RERANKING:
+    # Evaluate the question and each candidate chunk together.
+    hits = rerank_chunks(
+        query=query_text,
+        chunks=hits,
+        top_k=top_k,
+    )
+
+    # 5. Return the final top-k chunks.
+    return hits
