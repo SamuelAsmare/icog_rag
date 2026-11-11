@@ -2,63 +2,70 @@
 
 An AI-powered knowledge assistant for ICog that uses Retrieval-Augmented Generation (RAG) to answer questions from the attached ICog document library. Built with React, FastAPI, Gemini, Redis, and Qdrant.
 
-![alt text](assets/image.png)
 
-# Caching Strategies: Summary
+# Caching
 
-## 1. Read Strategies
+## 1. Cache-Aside vs. Read-Through
 
-| | Cache-Aside (Lazy Loading) | Read-Through |
-|---|---|---|
-| Who loads data on a miss? | The **application** checks the cache, queries the DB on a miss, then fills the cache | The **cache layer/library** loads from the DB itself |
-| App complexity | Higher (app owns the logic) | Lower (app only talks to the cache) |
-| First request | Slow (miss, then DB) | Slow (miss, then DB) |
-| Flexibility | High: any data shape or key | Lower: needs a loader configured in the cache |
-| Failure behavior | App still works if the cache is down (falls back to DB) | Cache is a hard dependency |
+Both strategies improve read performance by storing frequently accessed data in a cache.
 
-## 2. Write Strategies
+- **Cache-Aside:** The application checks the cache first. If the data is missing (cache miss), the application retrieves it from the database and manually stores it in the cache. The application manages the caching logic.
+- **Read-Through:** The application requests data from the cache. If the data is missing, the cache itself retrieves it from the database, stores it, and returns it to the application.
 
-| Strategy | How it works | Pros | Cons |
-|---|---|---|---|
-| **Write-through** | Write to cache and DB synchronously | Cache always consistent with DB | Higher write latency |
-| **Write-behind / write-back** | Write to cache, DB is updated asynchronously later | Very fast writes, batching possible | Data loss if cache fails before flush; eventual consistency |
-| **Write-around** | Write only to DB, skip the cache | Avoids filling the cache with rarely read data | Next read is a miss; stale cache entry unless invalidated |
+**Difference:** In cache-aside, the application manages cache population, while in read-through, the caching layer manages it.
 
-## 3. TTL, Invalidation, Eviction
+## 2. Write-Through vs. Write-Behind vs. Write-Around
 
-- **TTL (Time To Live):** each key expires automatically after a set time. It is a simple safety net that bounds staleness.
-- **Invalidation:** explicitly removing or updating a cached entry when the source data changes. It is accurate but easy to get wrong ("one of the hard problems in computer science").
-- **Eviction:** the cache removes entries **when memory is full**, even if they are still valid and not expired. It is about capacity, not freshness.
+- **Write-Through:** Data is written to both the cache and the database simultaneously. This keeps the cache and database consistent but can increase write latency.
+- **Write-Behind (Write-Back):** Data is first written to the cache and later written to the database asynchronously. It provides faster writes but risks data loss if the cache fails before data is persisted.
+- **Write-Around:** Data is written directly to the database without updating the cache. This avoids caching data that may not be read again but can cause a cache miss on the next read.
+
+## 3. TTL, Invalidation, and Eviction
+
+- **TTL (Time To Live):** Defines how long cached data remains valid before it automatically expires. Redis supports TTL using commands such as `EXPIRE` and `SET ... EX`.
+- **Invalidation:** Removing or marking cached data as outdated when the original data changes. It prevents applications from returning stale information.
+- **Eviction:** Removing cached data when Redis reaches its configured memory limit. Redis uses eviction policies to decide which keys to remove.
 
 ## 4. Eviction Policies
 
-| Policy | Removes | Best for | Weakness |
+| Policy | Description | Advantage | Disadvantage |
 |---|---|---|---|
-| **LRU** | Least recently used | General workloads with temporal locality | A one-time scan can flush hot data |
-| **LFU** | Least frequently used | Stable "hot set" of popular items | Old popular items linger; slow to adapt |
-| **FIFO** | Oldest inserted | Simplicity | Ignores usage, so it may evict hot data |
-| **Random** | A random key | Very cheap, uniform access patterns | Unpredictable hit rate |
+| LRU (Least Recently Used) | Removes the least recently accessed item. | Keeps recently used data. | Recently accessed data might not be frequently needed. |
+| LFU (Least Frequently Used) | Removes the least frequently accessed item. | Keeps frequently used data. | Less effective when access patterns change quickly. |
+| FIFO (First In, First Out) | Removes the oldest inserted item. | Simple to implement. | Ignores how frequently or recently data is accessed. |
+| Random | Removes a randomly selected item. | Simple and low overhead. | May remove frequently used data. |
 
-## 5. Redis Eviction Support
+## 5. Redis Eviction Policies
 
-Configured with `maxmemory` and `maxmemory-policy`:
+Redis supports several eviction policies:
 
-- `noeviction`: returns errors on writes when memory is full (default)
-- `allkeys-lru`, `allkeys-lfu`, `allkeys-random`: consider all keys
-- `volatile-lru`, `volatile-lfu`, `volatile-random`: consider only keys with a TTL
-- `volatile-ttl`: evicts keys with the shortest remaining TTL first
+- `noeviction`: Returns errors when memory is exceeded instead of removing keys.
+- `allkeys-lru`: Removes the least recently used keys from all keys.
+- `allkeys-lfu`: Removes the least frequently used keys from all keys.
+- `allkeys-random`: Removes random keys from all keys.
+- `volatile-lru`: Removes the least recently used keys among keys with an expiration time.
+- `volatile-lfu`: Removes the least frequently used keys among keys with an expiration time.
+- `volatile-random`: Removes random keys among keys with an expiration time.
+- `volatile-ttl`: Removes keys with the shortest remaining TTL first.
 
-**Redis supports LRU, LFU, and random, but not FIFO.** Its LRU and LFU are approximated (sampling-based) for speed, not exact.
+**Note:** Redis does not provide FIFO as a built-in eviction policy.
 
-## 6. Trade-offs and Our Choices
+## 6. Trade-offs and Choices in Our RAG Application
 
-> Adjust this section to match your project.
+Our RAG application uses Redis for caching question retrieval results and generated answers.
 
-| Decision | Choice | Justification |
-|---|---|---|
-| Read pattern | **Cache-aside** | The app keeps working if Redis is down, and we control what gets cached |
-| Write pattern | **Write-around + invalidate on write** (or write-through for critical data) | Avoids caching rarely read data; keeps data consistent without risking data loss like write-behind |
-| TTL | Set on every key (e.g. 5 to 15 min) | Bounds staleness if an invalidation is missed |
-| Eviction | **`allkeys-lru`** | Recently used data is most likely to be requested again, and it needs no per-key TTL to work |
+We use a **cache-aside approach**:
 
-**Trade-offs accepted:** cache-aside means the first request after a miss is slower, and TTL plus invalidation means data can be briefly stale. We accept this in exchange for simplicity, resilience, and a high hit rate.
+1. When a user submits a question, the application generates a SHA-256 hash of the normalized question.
+2. It checks Redis using the generated cache key.
+3. If the question is already cached, the application retrieves the existing request ID and avoids repeating embedding generation and Qdrant retrieval.
+4. If it is not cached, the application generates an embedding, searches Qdrant, and stores the retrieval results in Redis.
+5. When generating an answer, the application checks whether an answer is already stored in Redis. If so, it returns the cached answer without calling the LLM again.
+
+We use **TTL** to automatically expire cached records after a configured period, preventing old results from remaining indefinitely.
+
+We do not need a write-through or write-behind strategy because Redis is used as a temporary cache rather than the primary database. Our original documents and vector embeddings are stored separately, while Redis stores reusable retrieval results and generated answers.
+
+For eviction, an `allkeys-lru` policy is a reasonable choice because it removes less recently accessed keys when Redis reaches its memory limit, helping preserve recently used cached results.
+
+**Conclusion:** Redis improves our RAG application's performance by reducing repeated vector searches and unnecessary LLM calls. This reduces response time, computational costs, and repeated processing.
