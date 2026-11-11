@@ -14,7 +14,7 @@ Both strategies improve read performance by storing frequently accessed data in 
 
 **Difference:** In cache-aside, the application manages cache population, while in read-through, the caching layer manages it.
 
-## 2. Write-Through vs. Write-Behind vs. Write-Around
+## 2. Write-Through vs. Write-Behind/Write-Back vs. Write-Around
 
 - **Write-Through:** Data is written to both the cache and the database simultaneously. This keeps the cache and database consistent but can increase write latency.
 - **Write-Behind (Write-Back):** Data is first written to the cache and later written to the database asynchronously. It provides faster writes but risks data loss if the cache fails before data is persisted.
