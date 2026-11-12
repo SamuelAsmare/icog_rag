@@ -25,7 +25,7 @@ def extract_pdf_pages(file_path: Path) -> list[dict[str, Any]]:
 
     try:
         reader = PdfReader(str(file_path))
-    except Exception as exc:  # pragma: no cover - surfaced to API layer as user error
+    except Exception as exc:  
         raise ValueError("Failed to read the uploaded PDF file.") from exc
 
     if len(reader.pages) == 0:

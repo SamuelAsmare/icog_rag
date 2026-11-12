@@ -22,7 +22,6 @@ class GeminiService:
         self.groq_client: Any | None = None
 
     def _get_groq_client(self) -> Any:
-
         if not settings.GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY is not configured.")
 
@@ -37,7 +36,6 @@ class GeminiService:
         return self.groq_client
 
     def _get_gemini_client(self) -> genai.Client:
-
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not configured.")
 
@@ -53,7 +51,6 @@ class GeminiService:
         question: str,
         context: list[dict[str, Any]]
     ) -> str:
-
         if not context:
             raise ValueError(
                 "No relevant ICog context was found for this question."
@@ -77,40 +74,33 @@ class GeminiService:
             "to answer the question, clearly say that the available documents "
             "do not provide sufficient information. "
             "Use clear and understandable language.\n\n"
-
             f"Question:\n{question}\n\n"
-
             f"Retrieved document context:\n{context_text}"
         )
-        
-    def build_general_prompt(self, question: str) -> str:
 
+    def build_general_prompt(self, question: str) -> str:
         return (
             "You are ICog AI Assistant, an AI assistant developed for "
             "the ICog RAG application. You are powered by an external "
             "LLM provider, but your identity in this application is "
             "ICog AI Assistant, not ChatGPT, Gemini, or Groq.\n\n"
-
             "IDENTITY RULES:\n"
             "- If someone asks who you are, introduce yourself as ICog AI Assistant.\n"
             "- Never identify yourself as ChatGPT, OpenAI, Gemini, or Groq.\n"
             "- If someone asks who developed you, explain that you are the "
             "ICog AI assistant and that your responses are powered by an LLM.\n"
             "- Do not claim to be a human.\n\n"
-
             "BEHAVIOR:\n"
             "- Answer general questions using your general knowledge.\n"
             "- Respond naturally to greetings and casual conversations.\n"
             "- Be friendly, helpful, accurate, and concise.\n"
             "- If you are uncertain, acknowledge it.\n"
             "- Do not claim that general answers come from uploaded documents.\n\n"
-
             f"User question:\n{question}\n\n"
             "Your response:"
         )
 
     def _generate_with_groq(self, prompt: str) -> str:
-
         client = self._get_groq_client()
 
         try:
@@ -142,9 +132,7 @@ class GeminiService:
 
         raise RuntimeError("Groq returned an empty response.")
 
-
     def _generate_with_gemini(self, prompt: str) -> str:
-
         client = self._get_gemini_client()
 
         try:
@@ -178,9 +166,7 @@ class GeminiService:
 
         raise RuntimeError("Gemini returned an empty response.")
 
-
     def _generate_response(self, prompt: str) -> str:
-
         if settings.GROQ_API_KEY:
             return self._generate_with_groq(prompt)
 
@@ -191,16 +177,13 @@ class GeminiService:
             "No LLM API key is configured. "
             "Set GROQ_API_KEY or GEMINI_API_KEY."
         )
+
     def generate_answer(
         self,
         question: str,
         context: list[dict[str, Any]]
     ) -> str:
-
-        prompt = self.build_prompt(
-            question,
-            context
-        )
+        prompt = self.build_prompt(question, context)
 
         return self._generate_response(prompt)
 
@@ -208,7 +191,6 @@ class GeminiService:
         self,
         question: str
     ) -> str:
-
         prompt = self.build_general_prompt(question)
 
         return self._generate_response(prompt)
